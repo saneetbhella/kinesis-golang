@@ -1,0 +1,11 @@
+services:
+  localstack-aws:
+    image: localstack/localstack:4.2.0
+    ports:
+      - "4566:4566"
+    environment:
+      - AWS_ACCESS_KEY_ID=secret
+      - AWS_SECRET_ACCESS_KEY=secret
+      - AWS_DEFAULT_REGION=eu-west-1
+    volumes:
+      - ./localstack-setup/setup.sh:/etc/localstack/init/ready.d/script.sh
