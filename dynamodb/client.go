@@ -1,18 +1,20 @@
 package dynamodb
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"context"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/saneetbhella/logger"
-	"kinesis-streams/config"
+	appConfig "kinesis-streams/config"
 )
 
 type Client struct {
 	TableName string
-	Client    *dynamodb.DynamoDB
+	Client    *dynamodb.Client
 }
 
 type Checkpoint struct {
@@ -20,28 +22,33 @@ type Checkpoint struct {
 	SequenceNumber string
 }
 
-func New(c config.DynamoDbConfig) *Client {
-	sess, _ := session.NewSession(
-		&aws.Config{
-			Region:      aws.String(c.Region),
-			Endpoint:    aws.String(c.Endpoint),
-			Credentials: credentials.NewStaticCredentials(c.AccessKeyId, c.SecretAccessKey, ""),
-		},
+func New(c appConfig.DynamoDbConfig) *Client {
+	staticCreds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
+		c.AccessKeyId,
+		c.SecretAccessKey,
+		"",
+	))
+
+	cfg, _ := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(c.Region),
+		config.WithCredentialsProvider(staticCreds),
 	)
 
+	dynamoDbClient := dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+		o.BaseEndpoint = aws.String(c.Endpoint)
+	})
+
 	return &Client{
-		Client:    dynamodb.New(sess),
+		Client:    dynamoDbClient,
 		TableName: c.CheckpointsTableName,
 	}
 }
 
 func (c *Client) GetCheckpoint(shardId string) (*string, error) {
-	r, err := c.Client.GetItem(&dynamodb.GetItemInput{
+	r, err := c.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(c.TableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"ShardID": {
-				S: aws.String(shardId),
-			},
+		Key: map[string]types.AttributeValue{
+			"ShardID": &types.AttributeValueMemberS{Value: shardId},
 		},
 	})
 
@@ -54,7 +61,7 @@ func (c *Client) GetCheckpoint(shardId string) (*string, error) {
 	}
 
 	checkpoint := Checkpoint{}
-	err = dynamodbattribute.UnmarshalMap(r.Item, &checkpoint)
+	err = attributevalue.UnmarshalMap(r.Item, &checkpoint)
 
 	if err != nil {
 		return nil, err
@@ -64,7 +71,7 @@ func (c *Client) GetCheckpoint(shardId string) (*string, error) {
 }
 
 func (c *Client) CommitCheckpoint(shardID string, sequenceNumber string) error {
-	av, err := dynamodbattribute.MarshalMap(Checkpoint{
+	av, err := attributevalue.MarshalMap(Checkpoint{
 		ShardID:        shardID,
 		SequenceNumber: sequenceNumber,
 	})
@@ -74,7 +81,7 @@ func (c *Client) CommitCheckpoint(shardID string, sequenceNumber string) error {
 		return err
 	}
 
-	_, err = c.Client.PutItem(&dynamodb.PutItemInput{
+	_, err = c.Client.PutItem(context.Background(), &dynamodb.PutItemInput{
 		TableName: aws.String(c.TableName),
 		Item:      av,
 	})

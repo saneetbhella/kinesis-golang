@@ -1,8 +1,9 @@
 package service
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/saneetbhella/logger"
 	"sync"
 	"time"
@@ -39,16 +40,16 @@ func consume(kc KinesisConsumer, shardId string, streamName string, pollConfigIn
 		logger.Fatalf("Error getting checkpoint %v", err)
 	}
 
-	iteratorType := kinesis.ShardIteratorTypeLatest
+	iteratorType := types.ShardIteratorTypeTrimHorizon
 	input := &kinesis.GetShardIteratorInput{
 		StreamName:        aws.String(streamName),
 		ShardId:           &shardId,
-		ShardIteratorType: &iteratorType,
+		ShardIteratorType: iteratorType,
 	}
 
 	if checkpoint != nil {
 		logger.Infof("Reading from checkpoint %v for shard %v", *checkpoint, shardId)
-		input.ShardIteratorType = aws.String(kinesis.ShardIteratorTypeAfterSequenceNumber)
+		input.ShardIteratorType = types.ShardIteratorTypeAfterSequenceNumber
 		input.StartingSequenceNumber = aws.String(*checkpoint)
 	}
 

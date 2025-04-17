@@ -2,8 +2,8 @@ package service
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/google/uuid"
 	"github.com/saneetbhella/logger"
 )
@@ -19,7 +19,7 @@ func Start(kc KinesisProducer) {
 		if err != nil {
 			logger.Errorf("Error putting record %v", err)
 		} else {
-			fmt.Printf("Successfully put record %v\n", *output)
+			fmt.Printf("Successfully put record with sequence number %v on shard %v\n", *output.SequenceNumber, *output.ShardId)
 		}
 	}
 }
