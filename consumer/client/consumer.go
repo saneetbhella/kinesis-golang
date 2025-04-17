@@ -1,37 +1,43 @@
 package client
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/kinesis"
-	"kinesis-streams/config"
+	"context"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+	appConfig "kinesis-streams/config"
 )
 
 type Client struct {
-	kinesisClient *kinesis.Kinesis
+	kinesisClient *kinesis.Client
 	streamName    string
 }
 
-func New(c config.KinesisConfig) *Client {
-	s, _ := session.NewSession(
-		&aws.Config{
-			Region:      aws.String(c.Region),
-			Endpoint:    aws.String(c.Endpoint),
-			Credentials: credentials.NewStaticCredentials(c.AccessKeyId, c.SecretAccessKey, ""),
-		},
+func New(c appConfig.KinesisConfig) *Client {
+	staticCreds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
+		c.AccessKeyId,
+		c.SecretAccessKey,
+		"",
+	))
+
+	cfg, _ := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(c.Region),
+		config.WithCredentialsProvider(staticCreds),
 	)
 
-	kc := kinesis.New(s)
+	kinesisClient := kinesis.NewFromConfig(cfg, func(o *kinesis.Options) {
+		o.BaseEndpoint = aws.String(c.Endpoint)
+	})
 
 	return &Client{
-		kinesisClient: kc,
+		kinesisClient: kinesisClient,
 		streamName:    c.StreamName,
 	}
 }
 
 func (c *Client) Describe() (*kinesis.DescribeStreamOutput, error) {
-	shardOutputs, err := c.kinesisClient.DescribeStream(&kinesis.DescribeStreamInput{
+	shardOutputs, err := c.kinesisClient.DescribeStream(context.Background(), &kinesis.DescribeStreamInput{
 		StreamName: &c.streamName,
 	})
 
@@ -39,13 +45,13 @@ func (c *Client) Describe() (*kinesis.DescribeStreamOutput, error) {
 }
 
 func (c *Client) GetShardIterator(shardIterator *kinesis.GetShardIteratorInput) (*string, error) {
-	i, err := c.kinesisClient.GetShardIterator(shardIterator)
+	i, err := c.kinesisClient.GetShardIterator(context.Background(), shardIterator)
 
 	return i.ShardIterator, err
 }
 
 func (c *Client) GetRecords(shardIterator string) (*kinesis.GetRecordsOutput, error) {
-	r, err := c.kinesisClient.GetRecords(&kinesis.GetRecordsInput{
+	r, err := c.kinesisClient.GetRecords(context.Background(), &kinesis.GetRecordsInput{
 		ShardIterator: &shardIterator,
 	})
 

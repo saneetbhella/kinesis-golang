@@ -1,37 +1,43 @@
 package client
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/kinesis"
-	"kinesis-streams/config"
+	"context"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+	appConfig "kinesis-streams/config"
 )
 
 type Client struct {
-	kinesisClient *kinesis.Kinesis
+	kinesisClient *kinesis.Client
 	streamName    string
 }
 
-func New(c config.KinesisConfig) *Client {
-	s, _ := session.NewSession(
-		&aws.Config{
-			Region:      aws.String(c.Region),
-			Endpoint:    aws.String(c.Endpoint),
-			Credentials: credentials.NewStaticCredentials(c.AccessKeyId, c.SecretAccessKey, ""),
-		},
+func New(c appConfig.KinesisConfig) *Client {
+	staticCreds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
+		c.AccessKeyId,
+		c.SecretAccessKey,
+		"",
+	))
+
+	cfg, _ := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(c.Region),
+		config.WithCredentialsProvider(staticCreds),
 	)
 
-	kc := kinesis.New(s)
+	kinesisClient := kinesis.NewFromConfig(cfg, func(o *kinesis.Options) {
+		o.BaseEndpoint = aws.String(c.Endpoint)
+	})
 
 	return &Client{
-		kinesisClient: kc,
+		kinesisClient: kinesisClient,
 		streamName:    c.StreamName,
 	}
 }
 
 func (c *Client) Describe() error {
-	_, err := c.kinesisClient.DescribeStream(&kinesis.DescribeStreamInput{
+	_, err := c.kinesisClient.DescribeStream(context.Background(), &kinesis.DescribeStreamInput{
 		StreamName: &c.streamName,
 	})
 
@@ -39,7 +45,7 @@ func (c *Client) Describe() error {
 }
 
 func (c *Client) Produce(partitionKey string, data []byte) (*kinesis.PutRecordOutput, error) {
-	output, err := c.kinesisClient.PutRecord(&kinesis.PutRecordInput{
+	output, err := c.kinesisClient.PutRecord(context.Background(), &kinesis.PutRecordInput{
 		StreamName:   &c.streamName,
 		Data:         data,
 		PartitionKey: aws.String(partitionKey),
